@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EverCurrent — Daily Digest</title>
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M2 7 L7 2 L12 7 L7 12 Z" fill="#0d0e0f"/>
+        </svg>
+      </div>
+      <span class="logo-text">EverCurrent</span>
+    </div>
+
+    <div class="topbar-divider"></div>
+
+    <div class="project-info">
+      <span class="project-label">Project</span>
+      <div class="project-name-row">
+        <span class="project-name">Richard - Demo</span>
+      </div>
+    </div>
+
+    <div class="topbar-center"></div>
+
+    <div class="topbar-right">
+      <div class="stat-pill">
+        <span class="stat-dot" style="background:var(--text3)"></span>
+        <span id="msg-count">0</span> messages
+      </div>
+      <button class="slack-sync-btn" id="slack-sync-btn" onclick="handleSlackSync()">
+        <span id="slack-sync-label">⟳ Sync Slack</span>
+      </button>
+      <div class="topbar-divider"></div>
+      <div class="api-wrap">
+        <span class="api-label">API key</span>
+        <input class="api-input" id="api-key" type="password" placeholder="sk-ant-... (or set in .env)" autocomplete="off" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div class="main">
+
+    <!-- Slack feed -->
+    <div class="slack-panel">
+      <div class="slack-panel-header">
+        <div class="slack-panel-top">
+          <span class="slack-live-dot"></span>
+          <span class="slack-panel-title">Slack feed</span>
+          <span class="slack-count" id="feed-count">0 msgs</span>
+        </div>
+        <div class="slack-panel-controls">
+          <select class="channel-filter-select" id="channel-filter">
+            <option value="">All channels</option>
+          </select>
+          <button class="summarize-channel-btn" id="summarize-channel-btn" onclick="summarizeChannel()">
+            Summarize
+          </button>
+        </div>
+      </div>
+
+      <div class="feed" id="feed"></div>
+
+      <div class="digest-trigger-area">
+        <button class="daily-digest-btn" id="daily-digest-btn" onclick="triggerDailyDigest()">
+          <span class="daily-digest-icon">◈</span>
+          <span id="daily-digest-label">Generate My Daily Digest</span>
+        </button>
+        <div class="daily-digest-sub" id="daily-digest-sub">Summarizes today's Slack activity for your role</div>
+      </div>
+
+      <div class="send-area">
+        <div class="send-row">
+          <input class="msg-input" id="msg-input" placeholder="Type a Slack message..." />
+          <button class="send-btn" id="send-btn">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right panel -->
+    <div class="digests-area">
+
+      <!-- Personal role selector header -->
+      <div class="digest-header-block">
+        <div class="digest-header-top">
+          <div class="digest-header-title">Daily Digest</div>
+          <div class="digest-meta">
+            <span id="digest-date"></span>
+            <span class="digest-meta-sep">·</span>
+            <span id="phase-label-text">Bring-up phase</span>
+            <span class="digest-meta-sep">·</span>
+            <span id="digest-source">Loading…</span>
+          </div>
+        </div>
+        <div class="my-role-bar">
+          <span class="my-role-label">I'm a</span>
+          <div class="my-role-options" id="my-role-options">
+            <button class="my-role-btn" data-role="me" onclick="setRole('me', this)">
+              <span class="role-dot" style="background:#5090e0"></span>Mechanical
+            </button>
+            <button class="my-role-btn" data-role="ee" onclick="setRole('ee', this)">
+              <span class="role-dot" style="background:#7070e0"></span>Electrical
+            </button>
+            <button class="my-role-btn" data-role="fw" onclick="setRole('fw', this)">
+              <span class="role-dot" style="background:#e09a30"></span>Firmware
+            </button>
+            <button class="my-role-btn" data-role="sc" onclick="setRole('sc', this)">
+              <span class="role-dot" style="background:#4db87a"></span>Supply Chain
+            </button>
+            <button class="my-role-btn" data-role="pm" onclick="setRole('pm', this)">
+              <span class="role-dot" style="background:#60c060"></span>Product
+            </button>
+            <button class="my-role-btn" data-role="em" onclick="setRole('em', this)">
+              <span class="role-dot" style="background:#c080e0"></span>Manager
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div class="analysis-empty" id="analysis-empty">
+        <div class="analysis-empty-icon">↑</div>
+        <div class="analysis-empty-title">Select your role to get your digest</div>
+        <div class="analysis-empty-sub">Your digest is personalized to what matters for your role and the current project phase</div>
+      </div>
+
+      <!-- Role digest card -->
+      <div class="digest-card" id="role-digest-card" style="display:none">
+        <div class="card-header" id="role-digest-header"></div>
+        <div class="card-body" id="role-digest-body">
+          <div class="gen-state visible">
+            <div class="gen-spinner"></div>
+            <span>Generating digest…</span>
+          </div>
+        </div>
+        <div class="cross-team" id="role-digest-cross" style="display:none">
+          <div class="cross-label">Cross-team signal</div>
+          <div class="cross-text" id="role-digest-cross-text"></div>
+        </div>
+      </div>
+
+      <!-- Message analysis card (shown when a message is clicked) -->
+      <div class="digest-card analysis-card" id="analysis-card" style="display:none">
+        <div class="card-header">
+          <div class="analysis-meta">
+            <button class="back-btn" onclick="backToDigest()">← Digest</button>
+            <span class="analysis-channel" id="analysis-channel">#general</span>
+            <span class="analysis-from" id="analysis-from"></span>
+          </div>
+          <div class="card-header-right">
+            <span class="card-time" id="analysis-time"></span>
+            <span class="phase-badge" id="analysis-priority-badge">—</span>
+          </div>
+        </div>
+
+        <div class="analysis-original" id="analysis-original"></div>
+
+        <div class="card-body" id="analysis-body">
+          <div class="gen-state visible">
+            <div class="gen-spinner"></div>
+            <span>Analyzing message…</span>
+          </div>
+        </div>
+
+        <div class="cross-team" id="analysis-response-wrap" style="display:none">
+          <div class="cross-label">Suggested response <span class="response-hint">· edit before sending</span></div>
+          <div class="analysis-response-text editable-response" id="analysis-response-text" contenteditable="plaintext-only" spellcheck="false"></div>
+          <div class="response-actions">
+            <button class="copy-btn" id="copy-btn" onclick="copyResponse()">Copy</button>
+            <button class="reply-btn" id="reply-btn" onclick="replyInSlack()">
+              <span id="reply-btn-label">↩ Reply in Slack</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>
