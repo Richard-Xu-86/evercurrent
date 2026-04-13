@@ -75,19 +75,26 @@ router.post('/single', async (req, res) => {
  * Summarize all messages in the feed — what happened, key decisions, what's unresolved.
  * Body: { phase, apiKey }
  */
+/**
+ * POST /api/digest/summarize-channel
+ * Summarize all messages in a channel (or all channels), personalized to the viewer's role.
+ * Body: { phase, channel?, personaId?, apiKey? }
+ *
+ * When personaId is provided, the headline, what happened, unresolved items,
+ * and key decision are all filtered through the lens of what that role cares about.
+ */
 router.post('/summarize-channel', async (req, res) => {
-  const { phase, apiKey } = req.body;
+  const { phase, channel, personaId, apiKey } = req.body;
   const key = apiKey || process.env.ANTHROPIC_API_KEY;
   if (!key) return res.status(401).json({ error: 'No API key configured.' });
 
   try {
-    const Anthropic = require('@anthropic-ai/sdk');
-    const client = new Anthropic({ apiKey: key });
-    const { formatForPrompt } = require('../data/slackMessages');
-    const { getPhase } = require('../data/phases');
-
-    const { channel } = req.body;
+    const Anthropic      = require('@anthropic-ai/sdk');
+    const client         = new Anthropic({ apiKey: key });
     const { getMessages } = require('../data/slackMessages');
+    const { getPhase }   = require('../data/phases');
+    const { getPersona } = require('../data/personas');
+
     const msgs = channel ? getMessages(channel) : getMessages();
     const messageText = msgs.map(m => `[${m.channel.name}] ${m.user.name}: ${m.text}`).join('\n');
 
@@ -100,6 +107,13 @@ router.post('/summarize-channel', async (req, res) => {
 
     const phaseObj = getPhase(phase || 'bringup');
 
+    // Resolve persona if provided — personalizes the summary to their discipline
+    const persona = personaId ? (() => { try { return getPersona(personaId); } catch { return null; } })() : null;
+
+    const roleContext = persona
+      ? `\nYOU ARE SUMMARIZING FOR: ${persona.name}\nROLE CONTEXT: ${persona.role}\nFocus the headline, what happened, unresolved items, and key decision on what is most relevant to this role. A supply chain lead needs sourcing and BOM risks. A firmware engineer needs hardware blockers and integration failures. A manager needs cross-team decisions and schedule risk. Filter out noise that doesn't affect this role.`
+      : '';
+
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 600,
@@ -108,16 +122,17 @@ You always return valid JSON with no markdown, no backticks, no preamble.`,
       messages: [{
         role: 'user',
         content: `PHASE: ${phaseObj.context}
+${roleContext}
 
 SLACK MESSAGES:
 ${messageText}
 
-Summarize this channel activity. Return ONLY valid JSON:
+Summarize this Slack activity${persona ? ` for a ${persona.name}` : ''}. Return ONLY valid JSON:
 {
-  "headline": "one sentence capturing the most important thing happening right now, under 15 words",
-  "whatHappened": ["2-4 bullet points of key events or updates, each under 18 words"],
-  "unresolved": ["1-3 open questions or blockers still needing action, each under 15 words"],
-  "keyDecision": "the single most important decision or action the team needs to take, or null if none"
+  "headline": "one sentence capturing the most important thing for ${persona ? persona.name : 'the team'} right now, under 15 words",
+  "whatHappened": ["2-4 bullet points of key events relevant to ${persona ? persona.name : 'the team'}, each under 18 words"],
+  "unresolved": ["1-3 open questions or blockers that affect ${persona ? persona.name : 'the team'}, each under 15 words"],
+  "keyDecision": "the single most important decision or action for ${persona ? persona.name : 'the team'} to take, or null if none"
 }`
       }]
     });
@@ -133,11 +148,15 @@ Summarize this channel activity. Return ONLY valid JSON:
 
 /**
  * POST /api/digest/analyze
- * Analyze a single Slack message — summary, priority, suggested response, affected roles.
- * Body: { message: { text, user, channel }, phase, apiKey }
+ * Analyze a single Slack message, personalized to the viewer's role.
+ * Body: { message: { text, user, channel }, phase, personaId, apiKey }
+ *
+ * personaId is optional — if omitted, analysis is generic.
+ * When provided, Claude tailors the action and suggested response
+ * specifically to what that role cares about.
  */
 router.post('/analyze', async (req, res) => {
-  const { message, phase, apiKey } = req.body;
+  const { message, phase, personaId, apiKey } = req.body;
 
   if (!message?.text) {
     return res.status(400).json({ error: 'message.text is required' });
@@ -150,7 +169,12 @@ router.post('/analyze', async (req, res) => {
 
   try {
     const { analyzeMessage } = require('../services/digestService');
-    const result = await analyzeMessage(message, phase || 'bringup', key);
+    const { getPersona }     = require('../data/personas');
+
+    // Resolve persona if provided — used to personalize the analysis
+    const persona = personaId ? (() => { try { return getPersona(personaId); } catch { return null; } })() : null;
+
+    const result = await analyzeMessage(message, phase || 'bringup', key, persona);
     res.json(result);
   } catch (err) {
     console.error('[digest/analyze] Error:', err.message);

@@ -20,7 +20,8 @@ const state = {
   role:         localStorage.getItem('ec_my_role') || null,
   apiKey:       localStorage.getItem('ec_api_key') || '',
   messageCount: 0,
-  selectedMsg:  null
+  selectedMsg:  null,
+  allMessages:  []   // full unfiltered message list — used when filtering feed by channel
 };
 
 // ── Slack sync ─────────────────────────────────────────────────
@@ -38,6 +39,7 @@ window.handleSlackSync = async function() {
     if (feedEl) feedEl.innerHTML = '';
 
     const { messages } = await fetchMessages();
+    state.allMessages = messages;
     messages.forEach(m => UI.renderMessage(m, false, () => handleMessageClick(m)));
     state.messageCount = messages.length;
     UI.updateMessageCount(state.messageCount);
@@ -84,6 +86,7 @@ async function init() {
 
   try {
     const { messages } = await fetchMessages();
+    state.allMessages = messages;
     messages.forEach(m => UI.renderMessage(m, false, () => handleMessageClick(m)));
     state.messageCount = messages.length;
     UI.updateMessageCount(state.messageCount);
@@ -207,6 +210,33 @@ function populateChannelFilter(messages) {
     opt.textContent = '#' + ch;
     select.appendChild(opt);
   });
+
+  // Wire dropdown change to filter the feed
+  select.onchange = () => filterFeed(select.value);
+}
+
+// ── Feed filter by channel ─────────────────────────────────────
+// Re-renders only the messages that match the selected channel.
+// "All channels" (empty string) shows everything.
+function filterFeed(channelName) {
+  const feed = document.getElementById('feed');
+  if (!feed) return;
+
+  feed.innerHTML = '';
+
+  const filtered = channelName
+    ? state.allMessages.filter(m => m.channel?.name === channelName)
+    : state.allMessages;
+
+  filtered.forEach(m => UI.renderMessage(m, false, () => handleMessageClick(m)));
+
+  // Update the visible count to reflect the filtered set
+  const countEl = document.getElementById('feed-count');
+  if (countEl) {
+    countEl.textContent = channelName
+      ? filtered.length + ' msgs · #' + channelName
+      : state.allMessages.length + ' msgs';
+  }
 }
 
 // ── Summarize channel ──────────────────────────────────────────
@@ -225,6 +255,7 @@ window.summarizeChannel = async function() {
 
   document.getElementById('analysis-channel').textContent         = channelLabel;
   document.getElementById('analysis-from').textContent            = '';
+  document.getElementById('analysis-original').style.display      = 'none'; // no original message for channel summary
   document.getElementById('analysis-original').textContent        = '';
   document.getElementById('analysis-time').textContent            = '';
   document.getElementById('analysis-priority-badge').textContent  = 'SUMMARY';
@@ -241,7 +272,7 @@ window.summarizeChannel = async function() {
     </div>`;
 
   try {
-    const result = await summarizeChannel(state.phase, state.apiKey || null, channelVal || null);
+    const result = await summarizeChannel(state.phase, state.role, state.apiKey || null, channelVal || null);
     UI.renderChannelSummary(result);
   } catch (err) {
     document.getElementById('analysis-body').innerHTML =
@@ -344,9 +375,11 @@ async function handleMessageClick(msg) {
   const card = document.getElementById('analysis-card');
   card.style.display = '';
 
-  document.getElementById('analysis-channel').textContent  = '#' + (msg.channel?.name || 'general');
-  document.getElementById('analysis-from').textContent     = msg.user?.name || '';
-  document.getElementById('analysis-original').textContent = msg.text;
+  document.getElementById('analysis-channel').textContent   = '#' + (msg.channel?.name || 'general');
+  document.getElementById('analysis-from').textContent      = msg.user?.name || '';
+  const origEl = document.getElementById('analysis-original');
+  origEl.textContent    = msg.text;
+  origEl.style.display  = ''; // restore visibility for individual message analysis
   document.getElementById('analysis-time').textContent     = '';
   document.getElementById('analysis-priority-badge').textContent  = '…';
   document.getElementById('analysis-priority-badge').style.background = '';
@@ -364,7 +397,7 @@ async function handleMessageClick(msg) {
     </div>`;
 
   try {
-    const result = await analyzeMessage(msg, state.phase, state.apiKey || null);
+    const result = await analyzeMessage(msg, state.phase, state.role, state.apiKey || null);
     UI.renderAnalysis(result, msg);
   } catch (err) {
     document.getElementById('analysis-body').innerHTML =

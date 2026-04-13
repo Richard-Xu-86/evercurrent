@@ -179,6 +179,7 @@ html, body {
 .main {
   display: grid;
   grid-template-columns: 280px 1fr;
+  height: 100%;        /* inherit the 1fr height from .shell grid row */
   overflow: hidden;
 }
 
@@ -383,6 +384,8 @@ html, body {
 
 /* ── Digests area ── */
 .digests-area {
+  flex: 1;          /* fill remaining height in the grid column */
+  min-height: 0;    /* critical — allows flex child to shrink below content size so overflow-y works */
   overflow-y: auto;
   padding: 18px;
   display: flex; flex-direction: column; gap: 14px;

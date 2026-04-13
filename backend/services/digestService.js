@@ -147,18 +147,33 @@ async function generateAllDigests(phaseId, messageText, apiKey, personaIds) {
 }
 
 /**
- * Analyze a single Slack message — returns summary, priority, suggested response, affected roles
+ * Analyze a single Slack message, optionally personalized to a specific role.
+ *
+ * When a persona is provided, Claude tailors the action needed and suggested
+ * response specifically to what that role cares about — an Electrical Engineer
+ * gets a different action than a Supply Chain Lead reading the same message.
+ *
+ * @param {Object} message  - Slack message object { text, user, channel }
+ * @param {string} phase    - 'design' | 'bringup' | 'manufacturing'
+ * @param {string} apiKey   - Anthropic API key
+ * @param {Object} persona  - optional persona from personas.js (id, name, role)
  */
-async function analyzeMessage(message, phase, apiKey) {
+async function analyzeMessage(message, phase, apiKey, persona = null) {
   const client = new Anthropic({ apiKey });
 
   const channelName = message.channel?.name || 'general';
-  const userName    = message.user?.name || 'Team Member';
+  const userName    = message.user?.name    || 'Team Member';
   const phaseObj    = getPhase(phase);
 
   const system = `You are an AI assistant embedded in EverCurrent, a platform for robotics hardware engineering teams.
-You deeply understand hardware engineering: mechanical design, supply chain, firmware, and engineering management.
+You deeply understand hardware engineering: mechanical design, electrical/PCB, firmware, supply chain, product management, and engineering management.
 You always return valid JSON with no markdown, no backticks, no preamble.`;
+
+  // If a persona is provided, tailor the action and response to their role.
+  // Otherwise fall back to a generic team-level analysis.
+  const roleContext = persona
+    ? `\nYOU ARE ANALYZING THIS FOR: ${persona.name}\nROLE CONTEXT: ${persona.role}\nTailor the actionNeeded and suggestedResponse specifically to what this role would do. A firmware engineer gets a firmware action. A supply chain lead gets a sourcing action. Never give a generic response.`
+    : '\nAnalyze this for the general team.';
 
   const user = `PHASE: ${phaseObj.context}
 
@@ -166,15 +181,16 @@ SLACK MESSAGE:
 Channel: #${channelName}
 From: ${userName}
 Message: "${message.text}"
+${roleContext}
 
-Analyze this message for the team and return ONLY a valid JSON object:
+Return ONLY a valid JSON object:
 {
   "summary": "1-2 sentence plain-English summary of what this message means for the team",
   "priority": "critical | high | medium | low",
   "priorityReason": "one sentence explaining the priority rating, under 15 words",
-  "affectedRoles": ["list of roles from: mechanical, supply-chain, firmware, management, product"],
-  "actionNeeded": "specific next action, under 20 words, or null if no action needed",
-  "suggestedResponse": "a ready-to-send Slack reply the reader could use, 1-3 sentences, professional tone"
+  "affectedRoles": ["list of roles from: mechanical, electrical, supply-chain, firmware, management, product"],
+  "actionNeeded": "specific next action for ${persona ? persona.name : 'the team'}, under 20 words, or null if none",
+  "suggestedResponse": "a ready-to-send Slack reply written from the perspective of a ${persona ? persona.name : 'team member'}, 1-3 sentences, professional tone"
 }`;
 
   const response = await client.messages.create({

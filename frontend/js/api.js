@@ -120,11 +120,14 @@ async function fetchSlackStatus() {
 }
 
 /**
- * Analyze a single Slack message
+ * Analyze a single Slack message, personalized to the current role.
+ * The role is passed so Claude knows what this person cares about
+ * and can tailor the action and suggested response accordingly.
  */
-async function analyzeMessage(message, phase, apiKey = null) {
+async function analyzeMessage(message, phase, personaId = null, apiKey = null) {
   const body = { message, phase };
-  if (apiKey) body.apiKey = apiKey;
+  if (personaId) body.personaId = personaId;
+  if (apiKey)    body.apiKey    = apiKey;
 
   const res = await fetch(`${API_BASE}/api/digest/analyze`, {
     method: 'POST',
@@ -154,11 +157,16 @@ async function replyToSlack(channelId, text, threadTs) {
   return data;
 }
 
-async function summarizeChannel(phase, apiKey = null, channel = null) {
+/**
+ * Summarize a channel (or all channels), personalized to the current role.
+ * personaId is passed so Claude filters the summary through that discipline's lens.
+ */
+async function summarizeChannel(phase, personaId = null, apiKey = null, channel = null) {
   const body = { phase };
-  if (apiKey)   body.apiKey  = apiKey;
-  if (channel)  body.channel = channel;
-  const res  = await fetch(`${API_BASE}/api/digest/summarize-channel`, {
+  if (personaId) body.personaId = personaId;
+  if (apiKey)    body.apiKey    = apiKey;
+  if (channel)   body.channel   = channel;
+  const res = await fetch(`${API_BASE}/api/digest/summarize-channel`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
