@@ -1,5 +1,5 @@
 # EverCurrent — Daily Digest Tool
-### Take-Home Prototype · Hardware Engineering Teams
+### Prototype · Hardware Engineering Teams
 
 ---
 
