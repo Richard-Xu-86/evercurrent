@@ -333,15 +333,30 @@ window.backToDigest = function() {
 };
 
 // ── Message send ───────────────────────────────────────────────
+// Posts the message to the selected Slack channel via the Slack API,
+// then adds it to the local feed so it appears immediately without needing a sync.
 async function handleSend() {
-  const input = document.getElementById('msg-input');
-  const text  = input?.value.trim();
+  const input      = document.getElementById('msg-input');
+  const text       = input?.value.trim();
   if (!text) return;
+
+  // Read which channel is selected in the dropdown — fall back to 'general'
+  const channelName = document.getElementById('channel-filter')?.value || 'general';
+
   input.value = '';
 
   try {
-    const { message } = await postMessage(text);
+    // Look up the Slack channel ID from existing messages (Slack API needs the ID not the name)
+    const match     = state.allMessages.find(m => m.channel?.name === channelName);
+    const channelId = match?.channel?.id || channelName;
+
+    // Post to Slack first — this is the real send
+    await replyToSlack(channelId, text, null);
+
+    // Also add to local feed so it shows up immediately without a full sync
+    const { message } = await postMessage(text, channelName);
     UI.renderMessage(message, true, () => handleMessageClick(message));
+    state.allMessages.push(message);
     state.messageCount++;
     UI.updateMessageCount(state.messageCount);
   } catch (err) {
